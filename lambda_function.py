@@ -31,11 +31,15 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 def cors_response(status_code, body):
-    """Return response with Content-Type header only - CORS handled by Function URL"""
+    """Return response with proper CORS headers"""
     return {
         'statusCode': status_code,
         'headers': {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+            'Access-Control-Max-Age': '86400'
         },
         'body': json.dumps(body, cls=DecimalEncoder)
     }
@@ -187,12 +191,16 @@ def get_settings():
         return {}
 
 def lambda_handler(event, context):
-    """Main Lambda handler - CORS preflight handled by Function URL"""
+    """Main Lambda handler with CORS support"""
 
     try:
         # Parse the request
         http_method = event.get('requestContext', {}).get('http', {}).get('method', 'POST')
         path = event.get('rawPath', '/')
+
+        # Handle OPTIONS preflight requests for CORS
+        if http_method == 'OPTIONS':
+            return cors_response(200, {'message': 'CORS preflight successful'})
 
         # Handle different routes
         if path == '/parse-excel' and http_method == 'POST':
@@ -280,15 +288,38 @@ def handle_upload_logo(event):
         elif filename.lower().endswith('.svg'):
             content_type = 'image/svg+xml'
 
-        # Upload to S3
-        key = f'logos/{filename}'
-        s3_client.put_object(
-            Bucket=S3_BUCKET,
-            Key=key,
-            Body=logo_bytes,
-            ContentType=content_type,
-            ACL='public-read'
-        )
+        # Generate unique filename with timestamp to avoid caching issues
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        file_extension = filename.split('.')[-1] if '.' in filename else 'png'
+        unique_filename = f'logo_{timestamp}.{file_extension}'
+        key = f'logos/{unique_filename}'
+
+        # Upload to S3 (without ACL - bucket policy should handle public access)
+        try:
+            s3_client.put_object(
+                Bucket=S3_BUCKET,
+                Key=key,
+                Body=logo_bytes,
+                ContentType=content_type,
+                CacheControl='no-cache, no-store, must-revalidate'
+            )
+            print(f"Successfully uploaded logo to s3://{S3_BUCKET}/{key}")
+        except Exception as s3_error:
+            print(f"S3 upload error: {str(s3_error)}")
+            # Try with public-read ACL as fallback
+            try:
+                s3_client.put_object(
+                    Bucket=S3_BUCKET,
+                    Key=key,
+                    Body=logo_bytes,
+                    ContentType=content_type,
+                    CacheControl='no-cache, no-store, must-revalidate',
+                    ACL='public-read'
+                )
+                print(f"Successfully uploaded logo with public-read ACL")
+            except Exception as acl_error:
+                print(f"S3 upload with ACL also failed: {str(acl_error)}")
+                raise s3_error
 
         # Get URL
         logo_url = f'https://{S3_BUCKET}.s3.us-east-1.amazonaws.com/{key}'
@@ -299,7 +330,8 @@ def handle_upload_logo(event):
         settings['setting_key'] = 'company_settings'
         settings_table.put_item(Item=settings)
 
-        return cors_response(200, {'logo_url': logo_url})
+        print(f"Logo URL updated in settings: {logo_url}")
+        return cors_response(200, {'logo_url': logo_url, 'message': 'Logo uploaded successfully'})
     except Exception as e:
         print(f"Error uploading logo: {str(e)}")
         traceback.print_exc()
