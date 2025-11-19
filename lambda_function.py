@@ -1,19 +1,15 @@
 """
 M&J Toys Inc. - Invoice & Packing Slip Generator
-Lambda Function with all endpoints
+Simplified Lambda Function - PDF generation moved to client-side
 """
 
 import json
 import base64
 import io
-import uuid
 from datetime import datetime
 from decimal import Decimal
 import boto3
-from boto3.dynamodb.conditions import Key
 import pandas as pd
-from jinja2 import Template
-from weasyprint import HTML
 import traceback
 
 # Initialize AWS services
@@ -21,9 +17,8 @@ dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 s3_client = boto3.client('s3', region_name='us-east-1')
 
 # Table references
-documents_table = dynamodb.Table('MJToys_Documents')
 settings_table = dynamodb.Table('MJToys_Settings')
-field_edits_table = dynamodb.Table('MJToys_FieldEdits')
+documents_table = dynamodb.Table('MJToys_Documents')
 
 # S3 bucket
 S3_BUCKET = 'prompt-images-nerd'
@@ -36,11 +31,15 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 def cors_response(status_code, body):
-    """Return response with Content-Type header only - CORS handled by Function URL"""
+    """Return response with proper CORS headers"""
     return {
         'statusCode': status_code,
         'headers': {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+            'Access-Control-Max-Age': '86400'
         },
         'body': json.dumps(body, cls=DecimalEncoder)
     }
@@ -191,55 +190,39 @@ def get_settings():
         print(f"Error getting settings: {e}")
         return {}
 
-def save_document(document_id, doc_type, order_data, html_content):
-    """Save document to DynamoDB"""
-    try:
-        item = {
-            'document_id': document_id,
-            'document_type': doc_type,
-            'order_number': order_data['Order_number'],
-            'order_data': order_data,
-            'html_content': html_content,
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
-        }
-        documents_table.put_item(Item=item)
-        return True
-    except Exception as e:
-        print(f"Error saving document: {e}")
-        return False
-
 def lambda_handler(event, context):
-    """Main Lambda handler - CORS preflight handled by Function URL"""
+    """Main Lambda handler with CORS support"""
 
     try:
         # Parse the request
         http_method = event.get('requestContext', {}).get('http', {}).get('method', 'POST')
         path = event.get('rawPath', '/')
 
+        # Handle OPTIONS preflight requests for CORS
+        if http_method == 'OPTIONS':
+            return cors_response(200, {'message': 'CORS preflight successful'})
+
         # Handle different routes
         if path == '/parse-excel' and http_method == 'POST':
             return handle_parse_excel(event)
-        elif path == '/generate-document' and http_method == 'POST':
-            return handle_generate_document(event)
-        elif path == '/save-field-edit' and http_method == 'POST':
-            return handle_save_field_edit(event)
-        elif path == '/get-field-edits' and http_method == 'POST':
-            return handle_get_field_edits(event)
-        elif path == '/get-history' and http_method == 'GET':
-            return handle_get_history(event)
-        elif path == '/get-document' and http_method == 'POST':
-            return handle_get_document(event)
         elif path == '/get-settings' and http_method == 'GET':
             return handle_get_settings(event)
         elif path == '/update-settings' and http_method == 'POST':
             return handle_update_settings(event)
         elif path == '/upload-logo' and http_method == 'POST':
             return handle_upload_logo(event)
-        elif path == '/generate-pdf' and http_method == 'POST':
-            return handle_generate_pdf(event)
+        elif path == '/get-history' and http_method == 'GET':
+            return handle_get_history(event)
+        elif path == '/get-document' and http_method == 'GET':
+            return handle_get_document(event)
+        elif path == '/save-document' and http_method == 'POST':
+            return handle_save_document(event)
         elif path == '/health' and http_method == 'GET':
-            return cors_response(200, {'status': 'healthy', 'message': 'M&J Toys API is running'})
+            return cors_response(200, {
+                'status': 'healthy',
+                'message': 'M&J Toys API is running (client-side PDF generation)',
+                'version': '2.0'
+            })
         else:
             return cors_response(404, {'error': 'Endpoint not found'})
 
@@ -259,127 +242,6 @@ def handle_parse_excel(event):
 
         orders = parse_excel_file(file_content)
         return cors_response(200, {'orders': orders})
-    except Exception as e:
-        return cors_response(500, {'error': str(e)})
-
-def handle_generate_document(event):
-    """Handle document generation (invoice or packing slip)"""
-    try:
-        body = json.loads(event.get('body', '{}'))
-        doc_type = body.get('type', 'invoice')  # 'invoice' or 'packing_slip'
-        order_data = body.get('order_data')
-        field_edits = body.get('field_edits', {})
-
-        if not order_data:
-            return cors_response(400, {'error': 'No order data provided'})
-
-        # Apply field edits
-        if field_edits:
-            apply_field_edits(order_data, field_edits)
-
-        # Get settings
-        settings = get_settings()
-
-        # Generate HTML based on type
-        if doc_type == 'invoice':
-            html_content = generate_invoice_html(order_data, settings)
-        else:
-            html_content = generate_packing_slip_html(order_data, settings)
-
-        # Generate document ID
-        document_id = str(uuid.uuid4())
-
-        # Save to DynamoDB
-        save_document(document_id, doc_type, order_data, html_content)
-
-        return cors_response(200, {
-            'document_id': document_id,
-            'html_content': html_content,
-            'order_data': order_data
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return cors_response(500, {'error': str(e)})
-
-def apply_field_edits(order_data, field_edits):
-    """Apply user field edits to order data"""
-    for key, value in field_edits.items():
-        if '.' in key:  # Handle nested keys like 'line_items.0.Description'
-            parts = key.split('.')
-            if parts[0] == 'line_items' and len(parts) == 3:
-                idx = int(parts[1])
-                field = parts[2]
-                if idx < len(order_data['line_items']):
-                    order_data['line_items'][idx][field] = value
-        else:
-            order_data[key] = value
-
-def handle_save_field_edit(event):
-    """Save field edit to DynamoDB"""
-    try:
-        body = json.loads(event.get('body', '{}'))
-        document_id = body.get('document_id')
-        field_edits = body.get('field_edits', {})
-
-        if not document_id:
-            document_id = str(uuid.uuid4())
-
-        field_edits_table.put_item(Item={
-            'document_id': document_id,
-            'field_edits': field_edits,
-            'updated_at': datetime.now().isoformat()
-        })
-
-        return cors_response(200, {'document_id': document_id, 'message': 'Field edits saved'})
-    except Exception as e:
-        return cors_response(500, {'error': str(e)})
-
-def handle_get_field_edits(event):
-    """Get field edits for a document"""
-    try:
-        body = json.loads(event.get('body', '{}'))
-        document_id = body.get('document_id')
-
-        if not document_id:
-            return cors_response(400, {'error': 'No document_id provided'})
-
-        response = field_edits_table.get_item(Key={'document_id': document_id})
-
-        if 'Item' in response:
-            return cors_response(200, {'field_edits': response['Item'].get('field_edits', {})})
-        else:
-            return cors_response(200, {'field_edits': {}})
-    except Exception as e:
-        return cors_response(500, {'error': str(e)})
-
-def handle_get_history(event):
-    """Get history of generated documents"""
-    try:
-        response = documents_table.scan()
-        documents = response.get('Items', [])
-
-        # Sort by created_at descending
-        documents.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-
-        return cors_response(200, {'documents': documents})
-    except Exception as e:
-        return cors_response(500, {'error': str(e)})
-
-def handle_get_document(event):
-    """Get a specific document by ID"""
-    try:
-        body = json.loads(event.get('body', '{}'))
-        document_id = body.get('document_id')
-
-        if not document_id:
-            return cors_response(400, {'error': 'No document_id provided'})
-
-        response = documents_table.get_item(Key={'document_id': document_id})
-
-        if 'Item' in response:
-            return cors_response(200, {'document': response['Item']})
-        else:
-            return cors_response(404, {'error': 'Document not found'})
     except Exception as e:
         return cors_response(500, {'error': str(e)})
 
@@ -417,15 +279,47 @@ def handle_upload_logo(event):
         # Decode base64
         logo_bytes = base64.b64decode(logo_content)
 
-        # Upload to S3
-        key = f'logos/{filename}'
-        s3_client.put_object(
-            Bucket=S3_BUCKET,
-            Key=key,
-            Body=logo_bytes,
-            ContentType='image/png',
-            ACL='public-read'
-        )
+        # Determine content type from filename
+        content_type = 'image/png'
+        if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+            content_type = 'image/jpeg'
+        elif filename.lower().endswith('.gif'):
+            content_type = 'image/gif'
+        elif filename.lower().endswith('.svg'):
+            content_type = 'image/svg+xml'
+
+        # Generate unique filename with timestamp to avoid caching issues
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        file_extension = filename.split('.')[-1] if '.' in filename else 'png'
+        unique_filename = f'logo_{timestamp}.{file_extension}'
+        key = f'logos/{unique_filename}'
+
+        # Upload to S3 (without ACL - bucket policy should handle public access)
+        try:
+            s3_client.put_object(
+                Bucket=S3_BUCKET,
+                Key=key,
+                Body=logo_bytes,
+                ContentType=content_type,
+                CacheControl='no-cache, no-store, must-revalidate'
+            )
+            print(f"Successfully uploaded logo to s3://{S3_BUCKET}/{key}")
+        except Exception as s3_error:
+            print(f"S3 upload error: {str(s3_error)}")
+            # Try with public-read ACL as fallback
+            try:
+                s3_client.put_object(
+                    Bucket=S3_BUCKET,
+                    Key=key,
+                    Body=logo_bytes,
+                    ContentType=content_type,
+                    CacheControl='no-cache, no-store, must-revalidate',
+                    ACL='public-read'
+                )
+                print(f"Successfully uploaded logo with public-read ACL")
+            except Exception as acl_error:
+                print(f"S3 upload with ACL also failed: {str(acl_error)}")
+                raise s3_error
 
         # Get URL
         logo_url = f'https://{S3_BUCKET}.s3.us-east-1.amazonaws.com/{key}'
@@ -436,40 +330,77 @@ def handle_upload_logo(event):
         settings['setting_key'] = 'company_settings'
         settings_table.put_item(Item=settings)
 
-        return cors_response(200, {'logo_url': logo_url})
+        print(f"Logo URL updated in settings: {logo_url}")
+        return cors_response(200, {'logo_url': logo_url, 'message': 'Logo uploaded successfully'})
     except Exception as e:
+        print(f"Error uploading logo: {str(e)}")
         traceback.print_exc()
-        return cors_response(500, {'error': str(e)})
+        return cors_response(500, {'error': str(e), 'traceback': traceback.format_exc()})
 
-def handle_generate_pdf(event):
-    """Generate PDF from HTML"""
+def handle_get_history(event):
+    """Get document history"""
     try:
-        body = json.loads(event.get('body', '{}'))
-        html_content = body.get('html_content')
+        # Scan the documents table (in production, consider using GSI with pagination)
+        response = documents_table.scan()
+        documents = response.get('Items', [])
 
-        if not html_content:
-            return cors_response(400, {'error': 'No HTML content provided'})
+        # Sort by created_at descending
+        documents.sort(key=lambda x: x.get('created_at', ''), reverse=True)
 
-        # Generate PDF using WeasyPrint
-        pdf_file = HTML(string=html_content).write_pdf()
-
-        # Encode as base64
-        pdf_base64 = base64.b64encode(pdf_file).decode('utf-8')
-
-        return cors_response(200, {'pdf_content': pdf_base64})
+        return cors_response(200, {'documents': documents})
     except Exception as e:
+        print(f"Error getting history: {str(e)}")
         traceback.print_exc()
         return cors_response(500, {'error': str(e)})
 
-# Template generation functions will be defined after we create the HTML templates
-def generate_invoice_html(order_data, settings):
-    """Generate invoice HTML - template will be added"""
-    from invoice_template import INVOICE_TEMPLATE
-    template = Template(INVOICE_TEMPLATE)
-    return template.render(order=order_data, settings=settings)
+def handle_get_document(event):
+    """Get a specific document by ID"""
+    try:
+        # Get document_id from query parameters
+        params = event.get('queryStringParameters', {})
+        document_id = params.get('document_id') if params else None
 
-def generate_packing_slip_html(order_data, settings):
-    """Generate packing slip HTML - template will be added"""
-    from packing_slip_template import PACKING_SLIP_TEMPLATE
-    template = Template(PACKING_SLIP_TEMPLATE)
-    return template.render(order=order_data, settings=settings)
+        if not document_id:
+            return cors_response(400, {'error': 'document_id parameter required'})
+
+        response = documents_table.get_item(Key={'document_id': document_id})
+
+        if 'Item' not in response:
+            return cors_response(404, {'error': 'Document not found'})
+
+        return cors_response(200, {'document': response['Item']})
+    except Exception as e:
+        print(f"Error getting document: {str(e)}")
+        traceback.print_exc()
+        return cors_response(500, {'error': str(e)})
+
+def handle_save_document(event):
+    """Save a document to history"""
+    try:
+        import uuid
+
+        body = json.loads(event.get('body', '{}'))
+        document_data = body.get('document', {})
+
+        if not document_data:
+            return cors_response(400, {'error': 'No document data provided'})
+
+        # Generate document ID if not provided
+        if 'document_id' not in document_data:
+            document_data['document_id'] = str(uuid.uuid4())
+
+        # Add timestamp if not provided
+        if 'created_at' not in document_data:
+            document_data['created_at'] = datetime.utcnow().isoformat()
+
+        # Save to DynamoDB
+        documents_table.put_item(Item=document_data)
+
+        return cors_response(200, {
+            'message': 'Document saved successfully',
+            'document_id': document_data['document_id']
+        })
+    except Exception as e:
+        print(f"Error saving document: {str(e)}")
+        traceback.print_exc()
+        return cors_response(500, {'error': str(e)})
