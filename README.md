@@ -42,6 +42,8 @@ A full-stack application for generating professional invoices and packing slips 
 
 This will create:
 - `MJToys_Settings` - Stores company configuration
+- `MJToys_Documents` - Stores document history
+- `MJToys_FieldEdits` - Stores user field edits
 
 ### Step 2: Deploy Lambda Function
 
@@ -71,7 +73,7 @@ This will create:
 - Function URL: Enable with CORS
 
 **Required IAM Permissions:**
-- DynamoDB read/write access to `MJToys_Settings` table
+- DynamoDB read/write access to `MJToys_Settings` and `MJToys_Documents` tables
 - S3 read/write access to `prompt-images-nerd` bucket
 
 ### Step 3: Setup React Frontend

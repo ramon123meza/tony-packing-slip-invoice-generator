@@ -38,4 +38,28 @@ export const checkHealth = async () => {
   return response.data
 }
 
+export const getHistory = async () => {
+  const response = await api.get('/get-history')
+  return response.data
+}
+
+export const getDocument = async (documentId) => {
+  const response = await api.get(`/get-document?document_id=${documentId}`)
+  return response.data
+}
+
+export const saveDocument = async (documentData) => {
+  const response = await api.post('/save-document', { document: documentData })
+  return response.data
+}
+
+export const generatePDF = async (htmlContent) => {
+  // This is a placeholder - PDF generation is now client-side using react-pdf
+  // For backwards compatibility, return a mock response
+  return {
+    pdf_content: '',
+    message: 'PDF generation is now handled client-side'
+  }
+}
+
 export default api

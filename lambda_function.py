@@ -18,6 +18,7 @@ s3_client = boto3.client('s3', region_name='us-east-1')
 
 # Table references
 settings_table = dynamodb.Table('MJToys_Settings')
+documents_table = dynamodb.Table('MJToys_Documents')
 
 # S3 bucket
 S3_BUCKET = 'prompt-images-nerd'
@@ -202,6 +203,12 @@ def lambda_handler(event, context):
             return handle_update_settings(event)
         elif path == '/upload-logo' and http_method == 'POST':
             return handle_upload_logo(event)
+        elif path == '/get-history' and http_method == 'GET':
+            return handle_get_history(event)
+        elif path == '/get-document' and http_method == 'GET':
+            return handle_get_document(event)
+        elif path == '/save-document' and http_method == 'POST':
+            return handle_save_document(event)
         elif path == '/health' and http_method == 'GET':
             return cors_response(200, {
                 'status': 'healthy',
@@ -264,13 +271,22 @@ def handle_upload_logo(event):
         # Decode base64
         logo_bytes = base64.b64decode(logo_content)
 
+        # Determine content type from filename
+        content_type = 'image/png'
+        if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+            content_type = 'image/jpeg'
+        elif filename.lower().endswith('.gif'):
+            content_type = 'image/gif'
+        elif filename.lower().endswith('.svg'):
+            content_type = 'image/svg+xml'
+
         # Upload to S3
         key = f'logos/{filename}'
         s3_client.put_object(
             Bucket=S3_BUCKET,
             Key=key,
             Body=logo_bytes,
-            ContentType='image/png',
+            ContentType=content_type,
             ACL='public-read'
         )
 
@@ -285,5 +301,74 @@ def handle_upload_logo(event):
 
         return cors_response(200, {'logo_url': logo_url})
     except Exception as e:
+        print(f"Error uploading logo: {str(e)}")
+        traceback.print_exc()
+        return cors_response(500, {'error': str(e), 'traceback': traceback.format_exc()})
+
+def handle_get_history(event):
+    """Get document history"""
+    try:
+        # Scan the documents table (in production, consider using GSI with pagination)
+        response = documents_table.scan()
+        documents = response.get('Items', [])
+
+        # Sort by created_at descending
+        documents.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+
+        return cors_response(200, {'documents': documents})
+    except Exception as e:
+        print(f"Error getting history: {str(e)}")
+        traceback.print_exc()
+        return cors_response(500, {'error': str(e)})
+
+def handle_get_document(event):
+    """Get a specific document by ID"""
+    try:
+        # Get document_id from query parameters
+        params = event.get('queryStringParameters', {})
+        document_id = params.get('document_id') if params else None
+
+        if not document_id:
+            return cors_response(400, {'error': 'document_id parameter required'})
+
+        response = documents_table.get_item(Key={'document_id': document_id})
+
+        if 'Item' not in response:
+            return cors_response(404, {'error': 'Document not found'})
+
+        return cors_response(200, {'document': response['Item']})
+    except Exception as e:
+        print(f"Error getting document: {str(e)}")
+        traceback.print_exc()
+        return cors_response(500, {'error': str(e)})
+
+def handle_save_document(event):
+    """Save a document to history"""
+    try:
+        import uuid
+
+        body = json.loads(event.get('body', '{}'))
+        document_data = body.get('document', {})
+
+        if not document_data:
+            return cors_response(400, {'error': 'No document data provided'})
+
+        # Generate document ID if not provided
+        if 'document_id' not in document_data:
+            document_data['document_id'] = str(uuid.uuid4())
+
+        # Add timestamp if not provided
+        if 'created_at' not in document_data:
+            document_data['created_at'] = datetime.utcnow().isoformat()
+
+        # Save to DynamoDB
+        documents_table.put_item(Item=document_data)
+
+        return cors_response(200, {
+            'message': 'Document saved successfully',
+            'document_id': document_data['document_id']
+        })
+    except Exception as e:
+        print(f"Error saving document: {str(e)}")
         traceback.print_exc()
         return cors_response(500, {'error': str(e)})
