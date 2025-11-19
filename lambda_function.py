@@ -374,6 +374,25 @@ def handle_get_document(event):
         traceback.print_exc()
         return cors_response(500, {'error': str(e)})
 
+def convert_to_dynamodb_types(obj):
+    """Convert Python types to DynamoDB-compatible types recursively"""
+    if isinstance(obj, dict):
+        return {k: convert_to_dynamodb_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_dynamodb_types(item) for item in obj]
+    elif isinstance(obj, float):
+        # Convert to Decimal for DynamoDB
+        return Decimal(str(obj))
+    elif isinstance(obj, int):
+        return obj
+    elif isinstance(obj, str):
+        return obj
+    elif obj is None:
+        return obj
+    else:
+        # For any other type, try to convert to string
+        return str(obj)
+
 def handle_save_document(event):
     """Save a document to history"""
     try:
@@ -393,6 +412,9 @@ def handle_save_document(event):
         if 'created_at' not in document_data:
             document_data['created_at'] = datetime.utcnow().isoformat()
 
+        # Convert all numeric types to DynamoDB-compatible types
+        document_data = convert_to_dynamodb_types(document_data)
+
         # Save to DynamoDB
         documents_table.put_item(Item=document_data)
 
@@ -403,4 +425,4 @@ def handle_save_document(event):
     except Exception as e:
         print(f"Error saving document: {str(e)}")
         traceback.print_exc()
-        return cors_response(500, {'error': str(e)})
+        return cors_response(500, {'error': str(e), 'traceback': traceback.format_exc()})
