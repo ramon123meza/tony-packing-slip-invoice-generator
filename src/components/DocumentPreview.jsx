@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { PDFViewer, PDFDownloadLink, pdf } from '@react-pdf/renderer'
 import InvoiceTemplate from './InvoiceTemplate'
 import PackingSlipTemplate from './PackingSlipTemplate'
-import { getSettings } from '../api'
+import { getSettings, saveDocument } from '../api'
 import './DocumentPreview.css'
 
 const DocumentPreview = ({ order, documentType, onBack }) => {
@@ -20,12 +20,40 @@ const DocumentPreview = ({ order, documentType, onBack }) => {
     try {
       const result = await getSettings()
       setSettings(result.settings || {})
+
+      // Save document to history after settings are loaded
+      await saveDocumentToHistory()
     } catch (err) {
       console.error('Error loading settings:', err)
       // Use default settings if API fails
       setSettings({})
+
+      // Still try to save document even if settings fail
+      try {
+        await saveDocumentToHistory()
+      } catch (saveErr) {
+        console.error('Error saving document to history:', saveErr)
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const saveDocumentToHistory = async () => {
+    try {
+      const documentData = {
+        order_number: order.Order_number,
+        document_type: documentType,
+        order_data: order,
+        html_content: '', // Not storing HTML since we're using React PDF
+        created_at: new Date().toISOString()
+      }
+
+      await saveDocument(documentData)
+      console.log('Document saved to history successfully')
+    } catch (err) {
+      console.error('Failed to save document to history:', err)
+      // Don't show error to user - this is a background operation
     }
   }
 

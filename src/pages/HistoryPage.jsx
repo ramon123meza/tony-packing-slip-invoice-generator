@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { getHistory, getDocument, generatePDF } from '../api'
+import { PDFViewer, pdf } from '@react-pdf/renderer'
+import { getHistory, getDocument, getSettings } from '../api'
+import InvoiceTemplate from '../components/InvoiceTemplate'
+import PackingSlipTemplate from '../components/PackingSlipTemplate'
 import './HistoryPage.css'
 
 const HistoryPage = () => {
@@ -8,10 +11,22 @@ const HistoryPage = () => {
   const [error, setError] = useState('')
   const [selectedDoc, setSelectedDoc] = useState(null)
   const [generatingPDF, setGeneratingPDF] = useState(null)
+  const [settings, setSettings] = useState({})
 
   useEffect(() => {
     loadHistory()
+    loadSettings()
   }, [])
+
+  const loadSettings = async () => {
+    try {
+      const result = await getSettings()
+      setSettings(result.settings || {})
+    } catch (err) {
+      console.error('Error loading settings:', err)
+      setSettings({})
+    }
+  }
 
   const loadHistory = async () => {
     setLoading(true)
@@ -44,9 +59,11 @@ const HistoryPage = () => {
   const handleDownloadPDF = async (doc) => {
     setGeneratingPDF(doc.document_id)
     try {
-      const result = await generatePDF(doc.html_content)
-      const pdfBlob = base64ToBlob(result.pdf_content, 'application/pdf')
-      const url = window.URL.createObjectURL(pdfBlob)
+      // Regenerate PDF from order data
+      const DocumentComponent = doc.document_type === 'invoice' ? InvoiceTemplate : PackingSlipTemplate
+      const blob = await pdf(<DocumentComponent order={doc.order_data} settings={settings} />).toBlob()
+
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.download = `${doc.document_type}_${doc.order_number}.pdf`
@@ -62,28 +79,23 @@ const HistoryPage = () => {
     }
   }
 
-  const handlePrintDocument = (doc) => {
-    const printWindow = window.open('', '_blank')
-    printWindow.document.write(doc.html_content)
-    printWindow.document.close()
-    setTimeout(() => {
-      printWindow.print()
-    }, 250)
-  }
+  const handlePrintDocument = async (doc) => {
+    try {
+      // Regenerate PDF for printing
+      const DocumentComponent = doc.document_type === 'invoice' ? InvoiceTemplate : PackingSlipTemplate
+      const blob = await pdf(<DocumentComponent order={doc.order_data} settings={settings} />).toBlob()
 
-  const base64ToBlob = (base64, mimeType) => {
-    const byteCharacters = atob(base64)
-    const byteArrays = []
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-      const slice = byteCharacters.slice(offset, offset + 512)
-      const byteNumbers = new Array(slice.length)
-      for (let i = 0; i < slice.length; i++) {
-        byteNumbers[i] = slice.charCodeAt(i)
+      const url = window.URL.createObjectURL(blob)
+      const printWindow = window.open(url, '_blank')
+      if (printWindow) {
+        printWindow.addEventListener('load', () => {
+          printWindow.print()
+        })
       }
-      const byteArray = new Uint8Array(byteNumbers)
-      byteArrays.push(byteArray)
+    } catch (err) {
+      console.error('Error printing document:', err)
+      setError('Failed to print document')
     }
-    return new Blob(byteArrays, { type: mimeType })
   }
 
   const formatDate = (dateString) => {
@@ -137,7 +149,13 @@ const HistoryPage = () => {
               </button>
             </div>
             <div className="modal-body">
-              <div dangerouslySetInnerHTML={{ __html: selectedDoc.html_content }} />
+              <PDFViewer width="100%" height="600px">
+                {selectedDoc.document_type === 'invoice' ? (
+                  <InvoiceTemplate order={selectedDoc.order_data} settings={settings} />
+                ) : (
+                  <PackingSlipTemplate order={selectedDoc.order_data} settings={settings} />
+                )}
+              </PDFViewer>
             </div>
             <div className="modal-footer">
               <button
