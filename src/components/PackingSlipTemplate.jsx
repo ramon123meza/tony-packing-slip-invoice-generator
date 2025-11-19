@@ -148,7 +148,7 @@ const PackingSlipTemplate = ({ order, settings }) => {
     company_address: '16700 GALE AVE, CITY OF INDUSTRY, CA 91745',
     company_phone: '(626) 330-3882',
     company_fax: '(626) 330-3108',
-    logo_url: 'https://prompt-images-nerd.s3.us-east-1.amazonaws.com/logo_toys_2.png',
+    logo_url: '/api/logo',
     packing_slip_footer: 'Please carefully inspect the shipment quantities with this packing list , and before you sign complete on the BOL to the Carriers. Missing or damage found, your responsible to write on the BOL, and contact to us within 7 days.',
   }
 
