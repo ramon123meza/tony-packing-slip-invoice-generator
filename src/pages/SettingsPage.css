@@ -1,0 +1,77 @@
+.logo-section {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.current-logo {
+  background: white;
+  padding: 20px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 200px;
+}
+
+.current-logo img {
+  max-width: 200px;
+  max-height: 150px;
+  height: auto;
+}
+
+.logo-upload {
+  flex: 1;
+}
+
+.help-text {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #666;
+  font-style: italic;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.save-section {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.btn-save {
+  padding: 15px 40px;
+  font-size: 18px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: 'Roboto', sans-serif;
+  color: #333;
+  background-color: white;
+}
+
+@media (max-width: 768px) {
+  .logo-section {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .current-logo {
+    width: 100%;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-save {
+    width: 100%;
+  }
+}
