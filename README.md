@@ -46,39 +46,45 @@ This will create three DynamoDB tables:
 - `MJToys_Settings` - Stores company configuration
 - `MJToys_FieldEdits` - Stores user field edits
 
-### Step 2: Deploy Lambda Function
+### Step 2: Deploy Lambda Function with Docker
 
-⚠️ **IMPORTANT**: The Lambda function requires specific dependencies. See **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)** for detailed deployment instructions.
+⚠️ **CRITICAL**: WeasyPrint requires system libraries that are NOT available in standard Lambda Python runtime. You **MUST** use Docker deployment.
 
-**Quick Overview**:
+**Error you'll see without Docker:**
+```
+OSError: cannot load library 'libgobject-2.0-0'
+```
 
-1. Install dependencies from `requirements.txt`:
-   - boto3
-   - pandas
-   - openpyxl (required for Excel parsing!)
-   - jinja2
-   - weasyprint
-   - Pillow
+**Quick Docker Deployment** (Recommended):
 
-2. Deploy Lambda files:
-   - `lambda_function.py`
-   - `invoice_template.py`
-   - `packing_slip_template.py`
-
-3. Configure Lambda:
-   - Runtime: Python 3.9 or higher
-   - Memory: **1024 MB** (minimum 512 MB)
-   - Timeout: **60 seconds** (minimum 30 seconds)
-   - Function URL enabled (already provided): `https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/`
-
-4. Ensure Lambda has IAM permissions for:
-   - DynamoDB read/write access
-   - S3 read/write access to `prompt-images-nerd` bucket
-
-5. **Test deployment**:
+1. Ensure Docker and AWS CLI are installed
+2. Configure AWS credentials:
    ```bash
-   python test_lambda.py
+   aws configure
    ```
+3. Run the deployment script:
+   ```bash
+   chmod +x deploy-lambda-docker.sh
+   ./deploy-lambda-docker.sh
+   ```
+
+The script will:
+- ✅ Build Docker image with all WeasyPrint dependencies
+- ✅ Push to Amazon ECR
+- ✅ Update your Lambda function
+
+**For detailed instructions and troubleshooting**, see **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)**
+
+**Lambda Configuration:**
+- Package Type: **Container Image** (required for WeasyPrint)
+- Memory: **1024 MB** (minimum 512 MB)
+- Timeout: **60 seconds** (minimum 30 seconds)
+- Function URL: `https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/`
+
+**Required IAM Permissions:**
+- DynamoDB read/write access to `MJToys_*` tables
+- S3 read/write access to `prompt-images-nerd` bucket
+- ECR access for Docker image deployment
 
 ### Step 3: Setup React Frontend
 
@@ -250,26 +256,36 @@ The Lambda function provides the following endpoints:
 
 ## 🐛 Troubleshooting
 
-### 502 Bad Gateway Error (Most Common Issue)
+### OSError: cannot load library 'libgobject-2.0-0' (CRITICAL)
 
-If you see a **502 Bad Gateway** error when uploading Excel files, this means the Lambda function is crashing. Most commonly caused by:
+If you see this error when testing Lambda, it means you're using the wrong deployment method.
 
-1. **Missing openpyxl dependency** - Required for pandas to read Excel files
+**Cause**: WeasyPrint requires system libraries (Cairo, Pango, etc.) not available in standard Lambda Python runtime.
+
+**Solution**: You MUST use Docker container deployment. See **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)** for complete instructions.
+
+**Quick Fix**:
+```bash
+# Deploy using Docker (the correct way)
+./deploy-lambda-docker.sh
+```
+
+### 502 Bad Gateway Error
+
+If you see a **502 Bad Gateway** error when uploading Excel files, this means the Lambda function is crashing. Causes:
+
+1. **Missing system libraries** - Use Docker deployment (see above)
 2. **Lambda timeout too short** - Needs to be at least 30 seconds
 3. **Insufficient memory** - Needs at least 512 MB (1024 MB recommended)
 
-**Solution**: See **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)** for complete deployment instructions.
+**Solution**: Use Docker deployment and verify configuration in **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)**
 
-**Quick Check**:
-```bash
-# Test if Lambda is working
-python test_lambda.py
-```
-
-Or test health endpoint:
+**Quick Health Check**:
 ```bash
 curl https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/health
 ```
+
+Expected response: `{"status":"healthy","message":"M&J Toys API is running"}`
 
 ### Excel parsing fails
 - Ensure Excel file has all required columns

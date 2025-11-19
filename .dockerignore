@@ -1,0 +1,49 @@
+# Node modules and build artifacts
+node_modules/
+dist/
+build/
+.vite/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Test files
+test_lambda.py
+database_setup.py
+
+# Documentation
+*.md
+README.md
+LICENSE
+
+# Old samples
+Invoice_generator_old_sample/
+
+# Frontend files (not needed in Lambda)
+src/
+public/
+index.html
+package.json
+package-lock.json
+vite.config.js
+
+# OS files
+.DS_Store
+Thumbs.db
