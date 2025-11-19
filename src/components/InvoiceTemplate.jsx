@@ -160,7 +160,7 @@ const InvoiceTemplate = ({ order, settings }) => {
     company_address: '16700 GALE AVE, CITY OF INDUSTRY, CA 91745',
     company_phone: '(626) 330-3882',
     company_fax: '(626) 330-3108',
-    logo_url: 'https://prompt-images-nerd.s3.us-east-1.amazonaws.com/logo_toys.png',
+    logo_url: 'https://prompt-images-nerd.s3.us-east-1.amazonaws.com/logo_toys_2.png',
     default_fob: 'CITY OF INDUSTR',
     invoice_footer: 'ALL SALES ARE FINAL! Net prices included defective allowance discount. Please contact us with in 7 days to claim for missing or damage caused by the Carriers. Refused shipment will get bill for a 20% restocking fees, plus both ways freights. Payment received after 10 days from due date will be subject for a $50 fee, or 2%which ever is greater and additional periodic interest charges of up to 1.5% per month.',
   }
