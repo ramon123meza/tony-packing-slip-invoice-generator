@@ -48,24 +48,37 @@ This will create three DynamoDB tables:
 
 ### Step 2: Deploy Lambda Function
 
-1. Copy the entire content of `lambda_function.py`
-2. Also copy `invoice_template.py` and `packing_slip_template.py` to your Lambda deployment package
-3. Make sure your Lambda function has the following layers installed (as mentioned in your requirements):
+⚠️ **IMPORTANT**: The Lambda function requires specific dependencies. See **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)** for detailed deployment instructions.
+
+**Quick Overview**:
+
+1. Install dependencies from `requirements.txt`:
    - boto3
    - pandas
+   - openpyxl (required for Excel parsing!)
    - jinja2
    - weasyprint
-   - openpyxl
+   - Pillow
 
-4. Set up the Lambda function with:
+2. Deploy Lambda files:
+   - `lambda_function.py`
+   - `invoice_template.py`
+   - `packing_slip_template.py`
+
+3. Configure Lambda:
    - Runtime: Python 3.9 or higher
-   - Memory: At least 512 MB (recommended 1024 MB for PDF generation)
-   - Timeout: 30 seconds or more
+   - Memory: **1024 MB** (minimum 512 MB)
+   - Timeout: **60 seconds** (minimum 30 seconds)
    - Function URL enabled (already provided): `https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/`
 
-5. Ensure Lambda has IAM permissions for:
+4. Ensure Lambda has IAM permissions for:
    - DynamoDB read/write access
    - S3 read/write access to `prompt-images-nerd` bucket
+
+5. **Test deployment**:
+   ```bash
+   python test_lambda.py
+   ```
 
 ### Step 3: Setup React Frontend
 
@@ -237,10 +250,32 @@ The Lambda function provides the following endpoints:
 
 ## 🐛 Troubleshooting
 
+### 502 Bad Gateway Error (Most Common Issue)
+
+If you see a **502 Bad Gateway** error when uploading Excel files, this means the Lambda function is crashing. Most commonly caused by:
+
+1. **Missing openpyxl dependency** - Required for pandas to read Excel files
+2. **Lambda timeout too short** - Needs to be at least 30 seconds
+3. **Insufficient memory** - Needs at least 512 MB (1024 MB recommended)
+
+**Solution**: See **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)** for complete deployment instructions.
+
+**Quick Check**:
+```bash
+# Test if Lambda is working
+python test_lambda.py
+```
+
+Or test health endpoint:
+```bash
+curl https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/health
+```
+
 ### Excel parsing fails
 - Ensure Excel file has all required columns
 - Check that dates are in MM/DD/YYYY format
 - Verify Order_number column exists and has values
+- **If getting 502 error**: See above section
 
 ### PDF generation fails
 - Ensure Lambda has WeasyPrint layer installed
@@ -256,6 +291,23 @@ The Lambda function provides the following endpoints:
 - Verify DynamoDB tables were created successfully
 - Check Lambda has DynamoDB write permissions
 - Review Lambda CloudWatch logs for errors
+
+### Debugging Tips
+
+1. **Check Lambda CloudWatch Logs**:
+   - AWS Console → CloudWatch → Log groups
+   - Find `/aws/lambda/your-function-name`
+   - Look for error messages
+
+2. **Verify Lambda Configuration**:
+   - Runtime: Python 3.9+
+   - Memory: 1024 MB
+   - Timeout: 60 seconds
+   - Required dependencies installed (see requirements.txt)
+
+3. **Test Endpoints**:
+   - Use `test_lambda.py` to verify Lambda is responding
+   - Check each endpoint individually
 
 ## 📄 License
 
