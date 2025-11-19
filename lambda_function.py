@@ -36,13 +36,10 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 def cors_response(status_code, body):
-    """Return response with CORS headers"""
+    """Return response with Content-Type header only - CORS handled by Function URL"""
     return {
         'statusCode': status_code,
         'headers': {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-            'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
             'Content-Type': 'application/json'
         },
         'body': json.dumps(body, cls=DecimalEncoder)
@@ -213,11 +210,7 @@ def save_document(document_id, doc_type, order_data, html_content):
         return False
 
 def lambda_handler(event, context):
-    """Main Lambda handler"""
-
-    # Handle OPTIONS request for CORS
-    if event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
-        return cors_response(200, {'message': 'OK'})
+    """Main Lambda handler - CORS preflight handled by Function URL"""
 
     try:
         # Parse the request
