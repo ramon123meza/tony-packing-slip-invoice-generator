@@ -131,6 +131,7 @@ const DocumentPreview = ({ order, documentType, onBack }) => {
             </div>
             <div className="pdf-viewer-container">
               <PDFViewer
+                key={`${documentType}-${order.Order_number}`}
                 width="100%"
                 height="800px"
                 showToolbar={true}
