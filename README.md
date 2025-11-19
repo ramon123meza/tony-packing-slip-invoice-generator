@@ -1,23 +1,22 @@
 # M&J Toys Inc. - Invoice & Packing Slip Generator
 
-A sophisticated full-stack application for generating professional invoices and packing slips from Excel files.
+A full-stack application for generating professional invoices and packing slips from Excel files with **client-side PDF generation**.
 
 ## 🚀 Features
 
 - **Excel File Processing**: Upload Excel files and automatically generate invoices or packing slips
 - **Dual Document Types**: Support for both invoices (with pricing) and packing slips (with physical data)
-- **Live Preview**: Preview generated documents in the browser before downloading
-- **Inline Editing**: Double-click any field to edit it (future enhancement)
-- **PDF Generation**: Download documents as PDF files using WeasyPrint
-- **Print Functionality**: Print documents directly from the browser
-- **Document History**: View and regenerate previously created documents
+- **Live PDF Preview**: Real-time preview using react-pdf/renderer
+- **Client-Side PDF Generation**: Generate and download PDFs entirely in the browser - no server required!
+- **Print Functionality**: Print documents directly from the preview
 - **Settings Management**: Configure company information, logo, and document footers
 - **Simple Authentication**: Hardcoded authentication system for security
 - **Beautiful UI**: Gradient animated background with modern design
+- **Simplified Deployment**: No Docker or complex Lambda layers needed!
 
 ## 📋 Prerequisites
 
-- Python 3.9+ (for database setup script)
+- Python 3.9+ (for database setup script and Lambda)
 - Node.js 18+ (for React frontend)
 - AWS Account with:
   - DynamoDB access
@@ -41,50 +40,39 @@ A sophisticated full-stack application for generating professional invoices and 
    ```
 4. Type `yes` when prompted to create the tables
 
-This will create three DynamoDB tables:
-- `MJToys_Documents` - Stores generated documents
+This will create:
 - `MJToys_Settings` - Stores company configuration
-- `MJToys_FieldEdits` - Stores user field edits
 
-### Step 2: Deploy Lambda Function with Docker
+### Step 2: Deploy Lambda Function
 
-⚠️ **CRITICAL**: WeasyPrint requires system libraries that are NOT available in standard Lambda Python runtime. You **MUST** use Docker deployment.
+**Simple Deployment** (No Docker required!):
 
-**Error you'll see without Docker:**
-```
-OSError: cannot load library 'libgobject-2.0-0'
-```
-
-**Quick Docker Deployment** (Recommended):
-
-1. Ensure Docker and AWS CLI are installed
-2. Configure AWS credentials:
+1. Install dependencies locally:
    ```bash
-   aws configure
-   ```
-3. Run the deployment script:
-   ```bash
-   chmod +x deploy-lambda-docker.sh
-   ./deploy-lambda-docker.sh
+   pip install -r requirements.txt -t .
    ```
 
-The script will:
-- ✅ Build Docker image with all WeasyPrint dependencies
-- ✅ Push to Amazon ECR
-- ✅ Update your Lambda function
+2. Create a deployment package:
+   ```bash
+   zip -r lambda_function.zip lambda_function.py boto3 pandas openpyxl
+   ```
 
-**For detailed instructions and troubleshooting**, see **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)**
+3. Upload to Lambda:
+   ```bash
+   aws lambda update-function-code \
+     --function-name your-function-name \
+     --zip-file fileb://lambda_function.zip
+   ```
 
 **Lambda Configuration:**
-- Package Type: **Container Image** (required for WeasyPrint)
-- Memory: **1024 MB** (minimum 512 MB)
-- Timeout: **60 seconds** (minimum 30 seconds)
-- Function URL: `https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/`
+- Runtime: **Python 3.9+**
+- Memory: **256 MB** (minimal requirements)
+- Timeout: **30 seconds**
+- Function URL: Enable with CORS
 
 **Required IAM Permissions:**
-- DynamoDB read/write access to `MJToys_*` tables
+- DynamoDB read/write access to `MJToys_Settings` table
 - S3 read/write access to `prompt-images-nerd` bucket
-- ECR access for Docker image deployment
 
 ### Step 3: Setup React Frontend
 
@@ -93,14 +81,17 @@ The script will:
    npm install
    ```
 
-2. Start the development server:
+2. Update the Lambda URL in `src/api.js`:
+   ```javascript
+   const API_BASE_URL = 'your-lambda-url-here'
+   ```
+
+3. Start the development server:
    ```bash
    npm run dev
    ```
 
-3. Open your browser to `http://localhost:5173`
-
-That's it! No environment variables needed - everything is pre-configured.
+4. Open your browser to `http://localhost:5173`
 
 ## 🔐 Login Credentials
 
@@ -149,26 +140,29 @@ See `Invoice_generator_old_sample/template.xlsx` for a reference.
 ## 🎨 System Architecture
 
 ```
-┌─────────────────┐
-│  React Frontend │
-│   (Vite + React)│
-└────────┬────────┘
+┌─────────────────────────┐
+│    React Frontend       │
+│  (Vite + React)         │
+│  - @react-pdf/renderer  │
+│  - Client-side PDFs     │
+│  - Live preview         │
+└────────┬────────────────┘
          │
-         │ HTTPS
+         │ HTTPS (Simplified API)
          │
-┌────────▼────────────┐
-│  Lambda Function   │
-│  (Python)          │
-│  - Parse Excel     │
-│  - Generate HTML   │
-│  - Create PDF      │
-└────────┬───────────┘
+┌────────▼────────────────┐
+│   Lambda Function       │
+│   (Python - Minimal)    │
+│   - Parse Excel only    │
+│   - Settings storage    │
+│   - Logo upload         │
+└────────┬────────────────┘
          │
     ┌────┴────┐
     │         │
 ┌───▼──┐  ┌──▼──┐
 │DynamoDB│  │ S3  │
-│Tables  │  │Logos│
+│Settings│  │Logos│
 └────────┘  └─────┘
 ```
 
@@ -177,9 +171,8 @@ See `Invoice_generator_old_sample/template.xlsx` for a reference.
 ```
 .
 ├── database_setup.py          # DynamoDB table creation script
-├── lambda_function.py         # Main Lambda function with all endpoints
-├── invoice_template.py        # Invoice HTML template
-├── packing_slip_template.py   # Packing slip HTML template
+├── lambda_function.py         # Simplified Lambda (Excel parsing only)
+├── requirements.txt           # Python dependencies (minimal)
 ├── package.json               # Node dependencies
 ├── vite.config.js            # Vite configuration
 ├── index.html                # HTML entry point
@@ -193,7 +186,9 @@ See `Invoice_generator_old_sample/template.xlsx` for a reference.
     ├── components/
     │   ├── Layout.jsx        # Main layout with navigation
     │   ├── FileUpload.jsx    # Excel file upload component
-    │   └── DocumentPreview.jsx # Document preview with editing
+    │   ├── DocumentPreview.jsx # PDF preview component
+    │   ├── InvoiceTemplate.jsx # Invoice PDF template (react-pdf)
+    │   └── PackingSlipTemplate.jsx # Packing slip PDF template (react-pdf)
     └── pages/
         ├── LoginPage.jsx     # Login page
         ├── HomePage.jsx      # Main generator page
@@ -203,18 +198,12 @@ See `Invoice_generator_old_sample/template.xlsx` for a reference.
 
 ## 🔧 API Endpoints
 
-The Lambda function provides the following endpoints:
+The Lambda function provides the following simplified endpoints:
 
 - `POST /parse-excel` - Parse Excel file and extract orders
-- `POST /generate-document` - Generate invoice or packing slip HTML
-- `POST /save-field-edit` - Save user field edits
-- `POST /get-field-edits` - Retrieve field edits for a document
-- `GET /get-history` - Get all generated documents
-- `POST /get-document` - Get specific document by ID
 - `GET /get-settings` - Get company settings
 - `POST /update-settings` - Update company settings
 - `POST /upload-logo` - Upload company logo to S3
-- `POST /generate-pdf` - Generate PDF from HTML using WeasyPrint
 - `GET /health` - Health check endpoint
 
 ## 🎯 Usage Workflow
@@ -222,10 +211,8 @@ The Lambda function provides the following endpoints:
 1. **Login** with provided credentials
 2. **Select Document Type** (Invoice or Packing Slip)
 3. **Upload Excel File** containing order data
-4. **Preview Document** - Review the generated document
-5. **Edit Fields** (if needed) - Double-click to edit
-6. **Download PDF** or **Print** the document
-7. **View History** - Access previously generated documents
+4. **Preview Document** - Real-time PDF preview in browser
+5. **Download PDF** or **Print** the document (generated client-side)
 
 ## 🎨 Customization
 
@@ -256,47 +243,15 @@ The Lambda function provides the following endpoints:
 
 ## 🐛 Troubleshooting
 
-### OSError: cannot load library 'libgobject-2.0-0' (CRITICAL)
-
-If you see this error when testing Lambda, it means you're using the wrong deployment method.
-
-**Cause**: WeasyPrint requires system libraries (Cairo, Pango, etc.) not available in standard Lambda Python runtime.
-
-**Solution**: You MUST use Docker container deployment. See **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)** for complete instructions.
-
-**Quick Fix**:
-```bash
-# Deploy using Docker (the correct way)
-./deploy-lambda-docker.sh
-```
-
-### 502 Bad Gateway Error
-
-If you see a **502 Bad Gateway** error when uploading Excel files, this means the Lambda function is crashing. Causes:
-
-1. **Missing system libraries** - Use Docker deployment (see above)
-2. **Lambda timeout too short** - Needs to be at least 30 seconds
-3. **Insufficient memory** - Needs at least 512 MB (1024 MB recommended)
-
-**Solution**: Use Docker deployment and verify configuration in **[LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md)**
-
-**Quick Health Check**:
-```bash
-curl https://iuymyhaagv6rta66lg24ghep2i0cchks.lambda-url.us-east-1.on.aws/health
-```
-
-Expected response: `{"status":"healthy","message":"M&J Toys API is running"}`
-
 ### Excel parsing fails
 - Ensure Excel file has all required columns
 - Check that dates are in MM/DD/YYYY format
 - Verify Order_number column exists and has values
-- **If getting 502 error**: See above section
 
-### PDF generation fails
-- Ensure Lambda has WeasyPrint layer installed
-- Check Lambda memory is at least 512 MB
-- Verify Lambda timeout is 30+ seconds
+### PDF preview not showing
+- Ensure you ran `npm install` to get @react-pdf/renderer
+- Check browser console for errors
+- Try refreshing the page
 
 ### Cannot upload logo
 - Check S3 bucket `prompt-images-nerd` exists
@@ -304,7 +259,7 @@ Expected response: `{"status":"healthy","message":"M&J Toys API is running"}`
 - Ensure image file is under 5 MB
 
 ### Settings not saving
-- Verify DynamoDB tables were created successfully
+- Verify DynamoDB table was created successfully
 - Check Lambda has DynamoDB write permissions
 - Review Lambda CloudWatch logs for errors
 
@@ -317,13 +272,25 @@ Expected response: `{"status":"healthy","message":"M&J Toys API is running"}`
 
 2. **Verify Lambda Configuration**:
    - Runtime: Python 3.9+
-   - Memory: 1024 MB
-   - Timeout: 60 seconds
+   - Memory: 256 MB minimum
+   - Timeout: 30 seconds
    - Required dependencies installed (see requirements.txt)
 
-3. **Test Endpoints**:
-   - Use `test_lambda.py` to verify Lambda is responding
-   - Check each endpoint individually
+3. **Test Health Endpoint**:
+   ```bash
+   curl https://your-lambda-url/health
+   ```
+   Expected: `{"status":"healthy","message":"M&J Toys API is running (client-side PDF generation)","version":"2.0"}`
+
+## ⚡ Key Improvements in v2.0
+
+- **No Docker Required**: Simple Lambda deployment without container images
+- **Faster PDFs**: Generated instantly in the browser
+- **Smaller Lambda**: Reduced from ~500MB to ~50MB
+- **Lower Costs**: No PDF generation Lambda invocations
+- **Better Preview**: Real-time PDF viewer with native controls
+- **Offline Capable**: PDF generation works even if Lambda is down
+- **Simpler Deployment**: No WeasyPrint, no complex dependencies
 
 ## 📄 License
 
@@ -335,4 +302,4 @@ For issues or questions, please contact your system administrator.
 
 ---
 
-Built with ❤️ using React, AWS Lambda, DynamoDB, and WeasyPrint
+Built with ❤️ using React, AWS Lambda, DynamoDB, and @react-pdf/renderer

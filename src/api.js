@@ -15,38 +15,6 @@ export const parseExcel = async (fileContent) => {
   return response.data
 }
 
-export const generateDocument = async (type, orderData, fieldEdits = {}) => {
-  const response = await api.post('/generate-document', {
-    type,
-    order_data: orderData,
-    field_edits: fieldEdits
-  })
-  return response.data
-}
-
-export const saveFieldEdit = async (documentId, fieldEdits) => {
-  const response = await api.post('/save-field-edit', {
-    document_id: documentId,
-    field_edits: fieldEdits
-  })
-  return response.data
-}
-
-export const getFieldEdits = async (documentId) => {
-  const response = await api.post('/get-field-edits', { document_id: documentId })
-  return response.data
-}
-
-export const getHistory = async () => {
-  const response = await api.get('/get-history')
-  return response.data
-}
-
-export const getDocument = async (documentId) => {
-  const response = await api.post('/get-document', { document_id: documentId })
-  return response.data
-}
-
 export const getSettings = async () => {
   const response = await api.get('/get-settings')
   return response.data
@@ -62,11 +30,6 @@ export const uploadLogo = async (logoContent, filename) => {
     logo_content: logoContent,
     filename
   })
-  return response.data
-}
-
-export const generatePDF = async (htmlContent) => {
-  const response = await api.post('/generate-pdf', { html_content: htmlContent })
   return response.data
 }
 
